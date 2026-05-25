@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
-const BASE_URL = "https://nonprotectively-privies-seamus.ngrok-free.dev";
+const BASE_URL = "https://kutu-gh.duckdns.org";
 
 const CAMPUS_BOUNDS = {
   minLat: 6.6895, maxLat: 6.6925,
