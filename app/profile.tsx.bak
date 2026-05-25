@@ -1,0 +1,324 @@
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { BASE_URL } from "../constants/constants";
+
+const { width } = Dimensions.get("window");
+
+export default function ProfileScreen() {
+  const [user, setUser] = useState<any>(null);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [newBio, setNewBio] = useState("");
+  const router = useRouter();
+
+  const fetchProfile = async () => {
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      if (!token) {
+        router.replace("/");
+        return;
+      }
+
+      const res = await fetch(`${BASE_URL}/api/auth/profile/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data);
+        setNewBio(data.bio || "");
+      }
+
+      const postRes = await fetch(`${BASE_URL}/api/posts/mine/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (postRes.ok) {
+        const postData = await postRes.json();
+        setPosts(Array.isArray(postData) ? postData : []);
+      }
+    } catch (e) {
+      console.error("Profile Load Error:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Denied", "Gallery access is needed.");
+      return;
+    }
+
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      updateProfile(result.assets[0].uri);
+    }
+  };
+
+  const updateProfile = async (imageUri?: string) => {
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      const formData = new FormData();
+
+      if (imageUri) {
+        const filename = imageUri.split("/").pop() || "profile.jpg";
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+        formData.append("profile_pic", {
+          uri:
+            Platform.OS === "android"
+              ? imageUri
+              : imageUri.replace("file://", ""),
+          name: filename,
+          type,
+        } as any);
+      }
+
+      formData.append("bio", newBio);
+
+      const res = await fetch(`${BASE_URL}/api/auth/profile/update/`, {
+        method: "PATCH",
+        body: formData,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        Alert.alert("Success", "Profile updated!");
+        setIsEditing(false);
+        fetchProfile();
+      } else {
+        Alert.alert("Error", "Failed to update profile.");
+      }
+    } catch (e) {
+      Alert.alert("Error", "Connection error.");
+    }
+  };
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  if (loading)
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#2b59c3" />
+      </View>
+    );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="black" />
+        </TouchableOpacity>
+        <Text style={styles.username}>{user?.username || "profile"}</Text>
+        <TouchableOpacity
+          onPress={async () => {
+            await AsyncStorage.clear();
+            router.replace("/");
+          }}
+        >
+          <Ionicons name="log-out-outline" size={26} color="#ef4444" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.statsContainer}>
+        <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
+          <View style={styles.avatar}>
+            {user?.profile_pic ? (
+              <Image
+                source={{
+                  uri: user.profile_pic.startsWith("http")
+                    ? user.profile_pic
+                    : `${BASE_URL}${user.profile_pic}`,
+                }}
+                style={styles.avatarImg}
+              />
+            ) : (
+              <Text style={styles.avatarTxt}>
+                {user?.full_name ? user.full_name[0].toUpperCase() : "U"}
+              </Text>
+            )}
+            <View style={styles.cameraBadge}>
+              <Ionicons name="camera" size={12} color="white" />
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.statBox}>
+          <Text style={styles.statNum}>{posts.length}</Text>
+          <Text style={styles.statLabel}>posts</Text>
+        </View>
+        <View style={styles.statBox}>
+          <Text style={styles.statNum}>{user?.followers_count || 0}</Text>
+          <Text style={styles.statLabel}>followers</Text>
+        </View>
+        <View style={styles.statBox}>
+          <Text style={styles.statNum}>{user?.following_count || 0}</Text>
+          <Text style={styles.statLabel}>following</Text>
+        </View>
+      </View>
+
+      <View style={styles.infoSection}>
+        <Text style={styles.fullName}>{user?.full_name || "KsTU Student"}</Text>
+
+        {isEditing ? (
+          <View style={styles.editBioContainer}>
+            <TextInput
+              style={styles.bioInput}
+              value={newBio}
+              onChangeText={setNewBio}
+              placeholder="Write a bio..."
+              multiline
+            />
+            <TouchableOpacity
+              style={styles.saveBtn}
+              onPress={() => updateProfile()}
+            >
+              <Text style={styles.saveBtnText}>Save Bio</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.bioText}>{user?.bio || "No bio yet."}</Text>
+        )}
+      </View>
+
+      <View style={styles.btnRow}>
+        <TouchableOpacity
+          style={styles.editBtn}
+          onPress={() => setIsEditing(!isEditing)}
+        >
+          <Text style={styles.btnText}>
+            {isEditing ? "Cancel" : "Edit profile"}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.editBtn}>
+          <Text style={styles.btnText}>Share profile</Text>
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={posts}
+        numColumns={3}
+        keyExtractor={(item) => item.id.toString()}
+        renderItem={({ item }) => (
+          <Image
+            source={{
+              uri: item.image?.startsWith("http")
+                ? item.image
+                : `${BASE_URL}${item.image}`,
+            }}
+            style={styles.gridImage}
+          />
+        )}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "white" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 15,
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#eee",
+  },
+  username: { fontSize: 18, fontWeight: "bold" },
+  statsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginTop: 20,
+  },
+  avatarContainer: { flex: 1.2 },
+  avatar: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#2b59c3",
+    padding: 5,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  avatarImg: { width: "100%", height: "100%", borderRadius: 43 },
+  avatarTxt: { fontSize: 32, fontWeight: "bold", color: "#2b59c3" },
+  statBox: { flex: 1, alignItems: "center" },
+  statNum: { fontSize: 18, fontWeight: "bold", color: "#1e293b" },
+  statLabel: { fontSize: 13, color: "#64748b" },
+  infoSection: { paddingHorizontal: 20, marginTop: 15 },
+  fullName: { fontWeight: "700", fontSize: 16 },
+  bioText: { color: "#475569", marginTop: 4 },
+  editBioContainer: { marginTop: 10 },
+  bioInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#cbd5e1",
+    paddingVertical: 5,
+    color: "#334155",
+  },
+  saveBtn: {
+    backgroundColor: "#2b59c3",
+    padding: 8,
+    borderRadius: 5,
+    marginTop: 10,
+    alignSelf: "flex-start",
+  },
+  saveBtnText: { color: "#fff", fontWeight: "600", fontSize: 12 },
+  btnRow: { flexDirection: "row", padding: 20, gap: 10 },
+  editBtn: {
+    flex: 1,
+    backgroundColor: "#f1f5f9",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  btnText: { fontWeight: "700", fontSize: 14, color: "#334155" },
+  gridImage: { width: width / 3 - 2, height: width / 3 - 2, margin: 1 },
+});

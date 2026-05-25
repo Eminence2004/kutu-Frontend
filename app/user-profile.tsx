@@ -1,0 +1,241 @@
+// app/user-profile.tsx
+import { useTheme } from './contexts/ThemeContext';
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { BASE_URL } from "../constants/constants";
+
+const { width } = Dimensions.get("window");
+
+const absUrl = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  if (url.startsWith("http")) return url;
+  return `${BASE_URL}${url}`;
+};
+
+export default function UserProfile() {
+  const { id } = useLocalSearchParams();
+  const { colors } = useTheme();
+  const [user, setUser] = useState<any>(null);
+  const [userPosts, setUserPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const router = useRouter();
+
+  const loadProfileData = async () => {
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      const [userRes, postsRes] = await Promise.all([
+        fetch(`${BASE_URL}/api/users-detail/${id}/`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${BASE_URL}/api/posts/?user_id=${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      if (userRes.ok) {
+        const data = await userRes.json();
+        setUser(data);
+        setIsFollowing(data.is_following ?? false);
+      }
+      if (postsRes.ok) {
+        const postsData = await postsRes.json();
+        setUserPosts(Array.isArray(postsData) ? postsData : []);
+      }
+    } catch (e) {
+      console.error("UserProfile load error:", e);
+    }
+    setLoading(false);
+  };
+
+  const handleFollowToggle = async () => {
+    setFollowLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("userToken");
+      const response = await fetch(`${BASE_URL}/api/users/${id}/follow/`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (response.ok) {
+        const result = await response.json();
+        setIsFollowing(result.is_following);
+        setUser((prev: any) => ({
+          ...prev,
+          followers_count: result.is_following
+            ? (prev.followers_count || 0) + 1
+            : Math.max((prev.followers_count || 1) - 1, 0),
+        }));
+      } else {
+        Alert.alert("Error", "Could not process follow.");
+      }
+    } catch {
+      Alert.alert("Error", "Network error. Try again.");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  useEffect(() => { if (id) loadProfileData(); }, [id]);
+
+  if (loading)
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+
+  if (!user)
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Text style={{ color: colors.subtext }}>User not found.</Text>
+      </View>
+    );
+
+  const avatarUrl = absUrl(user.profile_pic);
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>@{user.username}</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.profileCard}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: colors.avatarBg }]}>
+              <Text style={[styles.avatarFallbackTxt, { color: colors.avatarText }]}>
+                {(user.full_name || user.username || "?")[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.statsBar}>
+            <View style={styles.statBox}>
+              <Text style={[styles.statNum, { color: colors.text }]}>{userPosts.length}</Text>
+              <Text style={[styles.statLabel, { color: colors.subtext }]}>Posts</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.statBox}>
+              <Text style={[styles.statNum, { color: colors.text }]}>{user.followers_count || 0}</Text>
+              <Text style={[styles.statLabel, { color: colors.subtext }]}>Followers</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.statBox}>
+              <Text style={[styles.statNum, { color: colors.text }]}>{user.following_count || 0}</Text>
+              <Text style={[styles.statLabel, { color: colors.subtext }]}>Following</Text>
+            </View>
+          </View>
+
+          <Text style={[styles.fullName, { color: colors.text }]}>{user.full_name}</Text>
+          {user.bio ? (
+            <Text style={[styles.bio, { color: colors.subtext }]}>{user.bio}</Text>
+          ) : (
+            <Text style={[styles.bio, { color: colors.border }]}>No bio yet.</Text>
+          )}
+
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.followButton, {
+                backgroundColor: isFollowing ? colors.card : colors.primary,
+                borderWidth: isFollowing ? 1 : 0,
+                borderColor: colors.border,
+                opacity: followLoading ? 0.6 : 1,
+              }]}
+              onPress={handleFollowToggle}
+              disabled={followLoading}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color={isFollowing ? colors.text : "#fff"} />
+              ) : (
+                <Text style={{ color: isFollowing ? colors.text : "#fff", fontWeight: "700", fontSize: 15 }}>
+                  {isFollowing ? "✓ Following" : "Follow"}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.chatButton, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => router.push({ pathname: "/chat", params: { receiverId: user.id, name: user.full_name } } as any)}
+            >
+              <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.gridDivider, { borderTopColor: colors.border }]} />
+
+        {userPosts.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="camera-reverse-outline" size={48} color={colors.border} />
+            <Text style={[styles.emptyText, { color: colors.subtext }]}>No posts yet.</Text>
+          </View>
+        ) : (
+          <View style={styles.vibeGrid}>
+            {userPosts.map((post) => {
+              const imgUrl = absUrl(post.image);
+              if (!imgUrl) return null;
+              return (
+                <TouchableOpacity key={post.id} style={styles.vibeItem}>
+                  <Image source={{ uri: imgUrl }} style={styles.vibeImage} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingHorizontal: 16, paddingVertical: 12,
+    marginTop: Platform.OS === "android" ? 30 : 0, borderBottomWidth: 1,
+  },
+  headerTitle: { fontSize: 17, fontWeight: "700" },
+  profileCard: { alignItems: "center", paddingVertical: 24, paddingHorizontal: 20 },
+  avatar: { width: 96, height: 96, borderRadius: 48, marginBottom: 18 },
+  avatarFallback: { justifyContent: "center", alignItems: "center" },
+  avatarFallbackTxt: { fontSize: 36, fontWeight: "800" },
+  statsBar: { flexDirection: "row", alignItems: "center", width: "100%", justifyContent: "space-evenly", marginBottom: 18, paddingHorizontal: 10 },
+  statBox: { alignItems: "center", flex: 1 },
+  statNum: { fontWeight: "800", fontSize: 20 },
+  statLabel: { fontSize: 12, marginTop: 2 },
+  statDivider: { width: 1, height: 32 },
+  fullName: { fontSize: 20, fontWeight: "800", marginBottom: 6 },
+  bio: { textAlign: "center", marginHorizontal: 30, fontSize: 14, lineHeight: 20 },
+  buttonRow: { flexDirection: "row", marginTop: 20, gap: 10 },
+  followButton: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: "center", justifyContent: "center", minWidth: 150 },
+  chatButton: { paddingHorizontal: 16, paddingVertical: 13, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  gridDivider: { borderTopWidth: 1, marginBottom: 2 },
+  vibeGrid: { flexDirection: "row", flexWrap: "wrap" },
+  vibeItem: { width: width / 3, aspectRatio: 1, padding: 1 },
+  vibeImage: { flex: 1, backgroundColor: "#f1f5f9" },
+  emptyState: { alignItems: "center", paddingVertical: 60 },
+  emptyText: { fontSize: 15, marginTop: 12 },
+});
