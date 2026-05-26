@@ -217,7 +217,7 @@ export default function HomeScreen() {
           onPress: async () => {
             try {
               const token = await AsyncStorage.getItem("userToken");
-              const res = await fetch(`${BASE_URL}/api/posts/${postId}/`, {
+              const res = await fetch(`${BASE_URL}/api/posts/${postId}/delete/`, {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${token}` },
               });
