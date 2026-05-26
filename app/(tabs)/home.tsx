@@ -26,6 +26,30 @@ const absUrl = (url: string | null | undefined): string | null => {
   return `${BASE_URL}${url}`;
 };
 
+/**
+ * Converts an ISO timestamp string into a human-readable relative time.
+ * e.g. "2 hours ago", "just now", "3 days ago"
+ */
+const timeAgo = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return "";
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+  const diffWeek = Math.floor(diffDay / 7);
+
+  if (diffSec < 60) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffDay < 7) return `${diffDay}d ago`;
+  if (diffWeek < 4) return `${diffWeek}w ago`;
+  // Fall back to a short date for older posts
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+
 // ── Hub Service Button ────────────────────────────────────────────────────────
 const HubService = ({
   icon,
@@ -51,7 +75,15 @@ const HubService = ({
 );
 
 // ── Post Avatar ───────────────────────────────────────────────────────────────
-const PostAvatar = ({ post, colors }: { post: any; colors: any }) => {
+const PostAvatar = ({
+  post,
+  colors,
+  onPress,
+}: {
+  post: any;
+  colors: any;
+  onPress?: () => void;
+}) => {
   const [imgError, setImgError] = useState(false);
 
   const picUrl =
@@ -64,18 +96,22 @@ const PostAvatar = ({ post, colors }: { post: any; colors: any }) => {
 
   if (picUrl && !imgError) {
     return (
-      <Image
-        source={{ uri: picUrl }}
-        style={styles.avatarImg}
-        onError={() => setImgError(true)}
-      />
+      <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+        <Image
+          source={{ uri: picUrl }}
+          style={styles.avatarImg}
+          onError={() => setImgError(true)}
+        />
+      </TouchableOpacity>
     );
   }
 
   return (
-    <View style={[styles.avatar, { backgroundColor: colors.avatarBg }]}>
-      <Text style={[styles.avatarTxt, { color: colors.avatarText }]}>{initial}</Text>
-    </View>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+      <View style={[styles.avatar, { backgroundColor: colors.avatarBg }]}>
+        <Text style={[styles.avatarTxt, { color: colors.avatarText }]}>{initial}</Text>
+      </View>
+    </TouchableOpacity>
   );
 };
 
@@ -83,6 +119,7 @@ const PostAvatar = ({ post, colors }: { post: any; colors: any }) => {
 export default function HomeScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
   const [student, setStudent] = useState<any>(null);
+  const [currentUsername, setCurrentUsername] = useState<string>("");
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -93,14 +130,20 @@ export default function HomeScreen() {
     try {
       const token = await AsyncStorage.getItem("userToken");
 
+      // Load current username for ownership checks (delete button)
+      const storedUsername = await AsyncStorage.getItem("username");
+      if (storedUsername) setCurrentUsername(storedUsername);
+
       const profileRes = await fetch(`${BASE_URL}/api/profile/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (profileRes.ok) {
         const profileData = await profileRes.json();
         setStudent(profileData);
+        // Keep AsyncStorage in sync
         await AsyncStorage.setItem("full_name", profileData.full_name || "");
         await AsyncStorage.setItem("username", profileData.username || "");
+        setCurrentUsername(profileData.username || storedUsername || "");
       } else {
         const full_name = await AsyncStorage.getItem("full_name");
         const username = await AsyncStorage.getItem("username");
@@ -155,6 +198,59 @@ export default function HomeScreen() {
     } catch (e) {
       console.error("Like Error:", e);
       Alert.alert("Error", "Could not process like.");
+    }
+  };
+
+  /**
+   * Delete a post. Shows a confirmation alert first, then calls the API.
+   * On success removes it from local state instantly (no need to refetch).
+   */
+  const handleDelete = async (postId: number) => {
+    Alert.alert(
+      "Delete Post",
+      "Are you sure you want to delete this post? This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem("userToken");
+              const res = await fetch(`${BASE_URL}/api/posts/${postId}/`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (res.ok || res.status === 204) {
+                // Remove from local state immediately
+                setPosts((prev) => prev.filter((p) => p.id !== postId));
+              } else {
+                Alert.alert("Error", "Could not delete post. Try again.");
+              }
+            } catch (e) {
+              console.error("Delete Error:", e);
+              Alert.alert("Error", "Could not delete post. Check your connection.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /**
+   * Navigate to another user's profile page.
+   * Pass their username as a route param.
+   */
+  const goToProfile = (username: string) => {
+    if (!username) return;
+    // If it's the logged-in user's own profile, go to the profile tab
+    if (username === currentUsername) {
+      router.push("/profile");
+    } else {
+      router.push({
+        pathname: "/user-profile",
+        params: { username },
+      } as any);
     }
   };
 
@@ -279,6 +375,13 @@ export default function HomeScreen() {
           const authorUsername = post.user_info?.username || post.user || "";
           const isLiked = likedPosts.includes(post.id);
 
+          // Show delete only if this post belongs to the logged-in user
+          const isOwner =
+            !!currentUsername && authorUsername === currentUsername;
+
+          // Timestamp — supports both created_at and timestamp field names
+          const timestamp = post.created_at || post.timestamp || null;
+
           return (
             <View
               key={post.id}
@@ -288,11 +391,36 @@ export default function HomeScreen() {
               }]}
             >
               <View style={styles.postHeader}>
-                <PostAvatar post={post} colors={colors} />
+                {/* ── Tappable Avatar → user profile ── */}
+                <PostAvatar
+                  post={post}
+                  colors={colors}
+                  onPress={() => goToProfile(authorUsername)}
+                />
+
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.author, { color: colors.text }]}>{authorName}</Text>
-                  <Text style={[styles.time, { color: colors.subtext }]}>@{authorUsername} • KsTU</Text>
+                  {/* Tappable name too → same profile nav */}
+                  <TouchableOpacity onPress={() => goToProfile(authorUsername)} activeOpacity={0.7}>
+                    <Text style={[styles.author, { color: colors.text }]}>{authorName}</Text>
+                  </TouchableOpacity>
+
+                  {/* Username • timestamp */}
+                  <Text style={[styles.time, { color: colors.subtext }]}>
+                    @{authorUsername}
+                    {timestamp ? ` • ${timeAgo(timestamp)}` : " • KsTU"}
+                  </Text>
                 </View>
+
+                {/* ── Delete button (owner only) ── */}
+                {isOwner && (
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => handleDelete(post.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="trash-outline" size={19} color="#ef4444" />
+                  </TouchableOpacity>
+                )}
               </View>
 
               {post.image && (
@@ -435,7 +563,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     elevation: 2,
   },
-  postHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 15 },
+  postHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 15,
+  },
 
   avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: "center", alignItems: "center" },
   avatarTxt: { fontWeight: "800", fontSize: 17 },
@@ -443,6 +576,13 @@ const styles = StyleSheet.create({
 
   author: { fontWeight: "700", fontSize: 15 },
   time: { fontSize: 12, marginTop: 1 },
+
+  // ── NEW: delete button in post header ──
+  deleteBtn: {
+    padding: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(239,68,68,0.08)",
+  },
 
   postImage: { width: "100%", height: 260, borderRadius: 18, marginBottom: 12, backgroundColor: "#f1f5f9" },
   postText: { lineHeight: 22, fontSize: 15 },

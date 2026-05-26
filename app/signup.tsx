@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -23,15 +24,23 @@ export default function SignupScreen() {
     phoneNumber: "",
     email: "",
     password: "",
+    confirmPassword: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSignup = async () => {
-    const { fullName, username, studentId, indexNumber, phoneNumber, email, password } = formData;
+    const { fullName, username, studentId, indexNumber, phoneNumber, email, password, confirmPassword } = formData;
 
     if (!fullName || !username || !email.includes("@") || password.length < 4) {
       Alert.alert("Missing Info", "Full name, username, email and password (min 4 chars) are required.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Password Mismatch", "Passwords do not match. Please try again.");
       return;
     }
 
@@ -41,7 +50,6 @@ export default function SignupScreen() {
       const timeout = setTimeout(() => controller.abort(), 10000);
 
       const SIGNUP_URL = `${BASE_URL}/api/signup/`;
-      console.log("🚀 Attempting signup at:", SIGNUP_URL);
 
       const response = await fetch(SIGNUP_URL, {
         method: "POST",
@@ -77,7 +85,6 @@ export default function SignupScreen() {
       } else {
         Alert.alert("Connection Error", "Cannot reach server. Check Django & Wi-Fi.");
       }
-      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -132,15 +139,62 @@ export default function SignupScreen() {
             onChangeText={(t) => update("email", t)}
           />
 
+          {/* Password with eye */}
           <Text style={styles.label}>Create Password *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor="#94a3b8"
-            secureTextEntry
-            value={formData.password}
-            onChangeText={(t) => update("password", t)}
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="••••••••"
+              placeholderTextColor="#94a3b8"
+              secureTextEntry={!showPassword}
+              value={formData.password}
+              onChangeText={(t) => update("password", t)}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color="#94a3b8"
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Confirm Password with eye */}
+          <Text style={styles.label}>Confirm Password *</Text>
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="••••••••"
+              placeholderTextColor="#94a3b8"
+              secureTextEntry={!showConfirmPassword}
+              value={formData.confirmPassword}
+              onChangeText={(t) => update("confirmPassword", t)}
+            />
+            <TouchableOpacity
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              style={styles.eyeBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color="#94a3b8"
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Password match indicator */}
+          {formData.confirmPassword.length > 0 && (
+            <Text style={[styles.matchHint, {
+              color: formData.password === formData.confirmPassword ? "#22c55e" : "#ef4444"
+            }]}>
+              {formData.password === formData.confirmPassword ? "✓ Passwords match" : "✗ Passwords do not match"}
+            </Text>
+          )}
 
           {/* Divider */}
           <View style={styles.divider}>
@@ -221,6 +275,29 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC", borderRadius: 16, padding: 16,
     fontSize: 16, borderWidth: 1.5, borderColor: "#E2E8F0",
     marginBottom: 15, color: "#1e293b",
+  },
+  passwordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    marginBottom: 15,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 16,
+    fontSize: 16,
+    color: "#1e293b",
+  },
+  eyeBtn: { paddingRight: 16 },
+  matchHint: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: -8,
+    marginBottom: 12,
+    marginLeft: 4,
   },
   divider: {
     flexDirection: "row", alignItems: "center", marginVertical: 20, gap: 8,

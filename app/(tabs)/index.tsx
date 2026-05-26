@@ -1,6 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,8 +20,33 @@ const PRIMARY = "#2b59c3";
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  // ── Auto-login if token exists ──────────────────────────────────────────
+  useEffect(() => {
+    const checkToken = async () => {
+      const token = await AsyncStorage.getItem("userToken");
+      if (token) {
+        // Verify token is still valid
+        try {
+          const res = await fetch(API.profile, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            router.replace("/home");
+          } else {
+            // Token expired, clear it
+            await AsyncStorage.removeItem("userToken");
+          }
+        } catch {
+          // Offline — stay on login but show offline message
+        }
+      }
+    };
+    checkToken();
+  }, []);
 
   const handleLogin = async () => {
     if (!email.includes("@") || password.length < 4) {
@@ -50,7 +76,6 @@ export default function LoginScreen() {
         const actualId = data.user_id || data.id;
         if (actualId) {
           await AsyncStorage.setItem("userId", actualId.toString());
-          console.log("✅ Login Success. Saved My ID:", actualId);
         }
 
         router.replace("/home");
@@ -58,13 +83,19 @@ export default function LoginScreen() {
         Alert.alert("Login Failed", data.error || "Invalid credentials.");
       }
     } catch (error) {
-      Alert.alert("Connection Error", "Cannot reach server. Check Django & Wi-Fi.");
+      Alert.alert(
+        "You're Offline",
+        "Cannot reach server. You can still use the Campus Map without logging in.",
+        [
+          { text: "Use Map", onPress: openMapAsGuest },
+          { text: "Try Again", style: "cancel" },
+        ]
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // Guest mode — go straight to map without logging in
   const openMapAsGuest = async () => {
     await AsyncStorage.setItem("guestMode", "true");
     router.push("/map" as any);
@@ -109,15 +140,29 @@ export default function LoginScreen() {
             value={email}
             onChangeText={setEmail}
           />
+
           <Text style={[styles.label, { marginTop: 15 }]}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor="#94a3b8"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="••••••••"
+              placeholderTextColor="#94a3b8"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color="#94a3b8"
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -154,7 +199,6 @@ const styles = StyleSheet.create({
   header: { fontSize: 42, fontWeight: "900", color: PRIMARY, marginBottom: 8 },
   subHeader: { fontSize: 16, color: "#64748B", textAlign: "center" },
 
-  // ── Offline map banner ──
   mapBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -181,6 +225,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC", borderRadius: 16, padding: 18,
     fontSize: 16, borderWidth: 1.5, borderColor: "#E2E8F0", color: "#1e293b",
   },
+  passwordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 18,
+    fontSize: 16,
+    color: "#1e293b",
+  },
+  eyeBtn: { paddingRight: 16 },
+
   button: {
     backgroundColor: PRIMARY, borderRadius: 16, padding: 20, alignItems: "center",
   },
