@@ -1,0 +1,82 @@
+{
+  "expo": {
+    "name": "Kutu",
+    "slug": "kutu_frontend",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/kutulogo.png",
+    "scheme": "kutu",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eminence2004.kutu",
+      "config": {
+        "googleMapsApiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+      },
+      "plugins": [
+        [
+          "expo-location",
+          {
+            "locationAlwaysAndWhenInUsePermission": "Allow KsTU Navigator to use your location."
+          }
+        ]
+      ]
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/kutulogo.png",
+        "backgroundColor": "#1a0533"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
+      "predictiveBackGestureEnabled": false,
+      "package": "com.eminence2004.kutu",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCc0wowpqOlPFC3SNmZSj-pcG-bWVj2fEc"
+        }
+      }
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Kutu to use your location for campus navigation."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/kutulogo.png",
+          "imageWidth": 250,
+          "resizeMode": "contain",
+          "backgroundColor": "#1a0533",
+          "dark": {
+            "backgroundColor": "#1a0533"
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c24aa535-b6e0-477c-a1df-f7afa86f4dd5"
+      }
+    }
+  }
+}
